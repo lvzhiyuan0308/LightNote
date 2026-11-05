@@ -18,7 +18,7 @@ using Forms = System.Windows.Forms;
 namespace LightNote {
  public class App : Application {
   Store store; State data; Note current; Window main;
-  TextBox title, body; TextBlock status, count, reminder, hint;
+  TextBox title, body; TextBlock status, count, reminder;
   Button pin; System.Windows.Controls.Border strip; ListBox notesList; bool syncingList;
   Forms.NotifyIcon tray; System.Drawing.Icon trayIcon;
   DispatcherTimer debounce, clock; bool loading, exiting;
@@ -26,9 +26,12 @@ namespace LightNote {
   static Mutex mutex; static EventWaitHandle showEvent;
   const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
   const string StartupName = "LightNote";
-  static readonly string[] Colors = { "#FFD66B", "#A4C9FA", "#A7D9BD" };
+  static readonly string[] Colors = { "MemoYellow", "MemoBlue", "MemoGreen" };
 
   [STAThread] public static void Main(string[] args) {
+   // This small text utility needs no GPU effects; software rendering also avoids
+   // blank WPF surfaces with some display drivers and remote desktop sessions.
+   RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
    string folder = Arg(args, "--data-dir") ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LightNote");
    if (args.Contains("--self-test")) { SelfTest.Run(folder); return; }
    string key;
@@ -57,20 +60,20 @@ namespace LightNote {
    MainWindow = main;
    using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("LightNote.png")) main.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(stream, System.Windows.Media.Imaging.BitmapCreateOptions.None, System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
    title = Find<TextBox>("TitleBox"); body = Find<TextBox>("BodyBox"); status = Find<TextBlock>("SaveText"); count = Find<TextBlock>("CountText");
-   reminder = Find<TextBlock>("ReminderText"); hint = Find<TextBlock>("ReminderHint"); pin = Find<Button>("PinButton"); strip = Find<System.Windows.Controls.Border>("ColorStrip");
+   reminder = Find<TextBlock>("ReminderText"); pin = Find<Button>("PinButton"); strip = Find<System.Windows.Controls.Border>("ColorStrip");
    notesList = Find<ListBox>("NotesList");
    notesList.SelectionChanged += delegate {
     if (syncingList || notesList.SelectedItem == null) return;
     var n = (Note)((ListBoxItem)notesList.SelectedItem).Tag;
     if (n != current) { SelectNote(n); if (current != n) RebuildSidebar(); }
    };
-   main.Width = SafeSize(data.Width, 560, 1300, 660); main.Height = SafeSize(data.Height, 420, 1200, 570);
+   if (data.LayoutVersion < 2) { data.Width = 580; data.Height = 430; data.LayoutVersion = 2; }
+   main.Width = SafeSize(data.Width, 500, 1300, 580); main.Height = SafeSize(data.Height, 340, 1200, 430);
    if (Forms.Screen.AllScreens.Any(s => s.WorkingArea.Contains((int)data.Left, (int)data.Top) && s.WorkingArea.Contains((int)(data.Left + 100), (int)(data.Top + 60)))) { main.WindowStartupLocation = WindowStartupLocation.Manual; main.Left = data.Left; main.Top = data.Top; }
    debounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
    debounce.Tick += delegate { debounce.Stop(); Save(); };
    title.TextChanged += Edited; body.TextChanged += Edited;
    Find<Button>("NewButton").Click += delegate { NewNote(); };
-   Find<Button>("ListButton").Click += delegate { ShowList(); };
    Find<Button>("MoreButton").Click += delegate { ShowMore(); };
    pin.Click += delegate { current.Pinned = !current.Pinned; RefreshPin(); Changed(); };
    Find<Button>("ReminderButton").Click += delegate { EditReminder(); };
@@ -92,30 +95,34 @@ namespace LightNote {
   }
   static double SafeSize(double v, double min, double max, double fallback) { return Double.IsNaN(v) || Double.IsInfinity(v) ? fallback : Math.Max(min, Math.Min(max, v)); }
   void Edited(object sender, TextChangedEventArgs e) { if (loading) return; current.Title = title.Text; current.Body = body.Text; count.Text = body.Text.Length + " 字"; UpdateSidebarText(); Changed(); }
-  void Changed() { if (loading) return; status.Text = "正在保存…"; debounce.Stop(); debounce.Start(); }
+  void Changed() { if (loading) return; status.Text = "保存中…"; status.Foreground = Theme("Muted"); debounce.Stop(); debounce.Start(); }
   void PullGeometry() { if (main != null && main.WindowState == WindowState.Normal) { data.Left = main.Left; data.Top = main.Top; data.Width = main.Width; data.Height = main.Height; } }
   bool Save() {
    debounce.Stop(); PullGeometry(); data.CurrentId = current.Id;
-   try { store.Save(data); status.Text = "已保存到本机"; return true; }
-   catch (Exception ex) { status.Text = "保存失败 · Ctrl+S 重试"; status.ToolTip = ex.Message; return false; }
+   try { store.Save(data); status.Text = "已保存"; status.Foreground = Theme("Muted"); status.ToolTip = "便笺自动保存在本机。关闭窗口后仍在托盘运行。"; return true; }
+   catch (Exception ex) { status.Text = "保存失败 · Ctrl+S 重试"; status.Foreground = Theme("ErrorInk"); status.ToolTip = ex.Message; return false; }
   }
-  void Bind() { loading = true; data.CurrentId = current.Id; title.Text = current.Title ?? ""; body.Text = current.Body ?? ""; count.Text = body.Text.Length + " 字"; strip.Background = Brush(Colors[Math.Abs(current.Color % Colors.Length)]); RefreshPin(); RefreshReminder(); RebuildSidebar(); loading = false; }
+  void Bind() { loading = true; data.CurrentId = current.Id; title.Text = current.Title ?? ""; body.Text = current.Body ?? ""; count.Text = body.Text.Length + " 字"; strip.Background = Theme(Colors[Math.Abs(current.Color % Colors.Length)]); RefreshPin(); RefreshReminder(); RebuildSidebar(); loading = false; }
   static string Summary(Note n) { return String.IsNullOrWhiteSpace(n.Body) ? "还没有内容" : n.Body.Replace("\r", " ").Replace("\n", " ").Replace("\t", " "); }
   void UpdateSidebarText() {
    foreach (ListBoxItem item in notesList.Items) {
-    var n = (Note)item.Tag; if (n != current) continue;
+    var n = (Note)item.Tag;
     var panel = (StackPanel)item.Content; ((TextBlock)panel.Children[0]).Text = n.Label; ((TextBlock)panel.Children[1]).Text = Summary(n);
-    System.Windows.Automation.AutomationProperties.SetName(item, n.Label); break;
+    System.Windows.Automation.AutomationProperties.SetName(item, n.Label); item.ToolTip = n.Label;
    }
   }
   void RebuildSidebar() {
    syncingList = true;
    try {
+    var visible = data.Notes.Where(n => n.DeletedUtc == 0).ToArray();
+    if (notesList.Items.Count == visible.Length && notesList.Items.Cast<ListBoxItem>().Select(i => ((Note)i.Tag).Id).SequenceEqual(visible.Select(n => n.Id))) {
+     UpdateSidebarText(); notesList.SelectedItem = notesList.Items.Cast<ListBoxItem>().FirstOrDefault(i => i.Tag == current); return;
+    }
     notesList.Items.Clear();
-    foreach (var n in data.Notes.Where(n => n.DeletedUtc == 0)) {
+    foreach (var n in visible) {
      var selected = n; var panel = new StackPanel();
-     panel.Children.Add(new TextBlock { Text = n.Label, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = Brush("#202B3D"), TextTrimming = TextTrimming.CharacterEllipsis });
-     panel.Children.Add(new TextBlock { Text = Summary(n), FontSize = 11, Foreground = Brush("#59677B"), Margin = new Thickness(0, 6, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
+     panel.Children.Add(new TextBlock { Text = n.Label, FontSize = 12.5, FontWeight = FontWeights.Medium, Foreground = Theme("Ink"), TextTrimming = TextTrimming.CharacterEllipsis });
+     panel.Children.Add(new TextBlock { Text = Summary(n), FontSize = 11, Foreground = Theme("Muted"), Margin = new Thickness(0, 3, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
      var item = new ListBoxItem { Content = panel, Tag = n, ToolTip = n.Label };
      System.Windows.Automation.AutomationProperties.SetName(item, n.Label);
      var menu = new System.Windows.Controls.ContextMenu(); menu.Items.Add(Item("删除便笺", delegate { DeleteNote(selected); })); item.ContextMenu = menu;
@@ -124,16 +131,17 @@ namespace LightNote {
     Find<TextBlock>("NoteTotal").Text = notesList.Items.Count.ToString();
    } finally { syncingList = false; }
   }
-  void RefreshPin() { main.Topmost = current.Pinned; pin.Content = current.Pinned ? "置顶：开" : "置顶：关"; pin.Background = Brush(current.Pinned ? "#EAF0FF" : "#FFFFFF"); }
+  void RefreshPin() { main.Topmost = current.Pinned; Find<TextBlock>("PinText").Text = current.Pinned ? "已置顶" : "置顶"; pin.Foreground = Theme(current.Pinned ? "Accent" : "SecondaryInk"); pin.Background = current.Pinned ? Theme("SelectedSurface") : Brushes.Transparent; System.Windows.Automation.AutomationProperties.SetName(pin, current.Pinned ? "取消置顶" : "设为置顶"); }
   void RefreshReminder() {
-   if (current.DueUtc <= 0) { reminder.Text = "＋ 设置提醒"; hint.Text = "选择日期与时间，到点提醒你"; }
-   else { reminder.Text = "提醒 · " + new DateTime(current.DueUtc, DateTimeKind.Utc).ToLocalTime().ToString("MM月dd日  HH:mm"); hint.Text = current.Alerting ? "待处理 · 点击修改提醒" : "点击修改或取消提醒"; }
+   var button = Find<Button>("ReminderButton");
+   if (current.DueUtc <= 0) { reminder.Text = "设置提醒"; button.Foreground = Theme("SecondaryInk"); button.ToolTip = "选择提醒日期与时间"; }
+   else { var date = new DateTime(current.DueUtc, DateTimeKind.Utc).ToLocalTime(); reminder.Text = (current.Alerting ? "待处理 · " : "") + date.ToString("MM/dd HH:mm"); button.Foreground = Theme("Accent"); button.ToolTip = date.ToString("yyyy年MM月dd日 HH:mm") + " · 点击修改或取消"; }
   }
   void NewNote() { if (!Save()) { ShowSaveError(); return; } current = new Note(); data.Notes.Add(current); Bind(); Changed(); ShowMain(); title.Focus(); title.SelectAll(); }
   void SelectNote(Note n) { if (n.DeletedUtc != 0) return; if (!Save()) { ShowSaveError(); return; } current = n; Bind(); Changed(); ShowMain(); }
   void ShowMain() { main.Show(); main.WindowState = WindowState.Normal; main.Activate(); }
   void ShowSaveError() { MessageBox.Show(main, "内容暂未写入磁盘。请检查磁盘空间或目录权限后按 Ctrl+S 重试。\n" + store.Folder, "保存失败", MessageBoxButton.OK, MessageBoxImage.Warning); }
-  static SolidColorBrush Brush(string hex) { return (SolidColorBrush)new BrushConverter().ConvertFromString(hex); }
+  SolidColorBrush Theme(string key) { return (SolidColorBrush)main.Resources[key]; }
   System.Windows.Controls.MenuItem Item(string label, Action click) { var i = new System.Windows.Controls.MenuItem { Header = label }; i.Click += delegate { click(); }; return i; }
   void OpenMenu(Button anchor, System.Windows.Controls.ContextMenu menu) { menu.PlacementTarget = anchor; menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom; menu.IsOpen = true; }
   void ShowList() { notesList.Focus(); var item = notesList.SelectedItem as ListBoxItem; if (item != null) { item.Focus(); notesList.ScrollIntoView(item); } }
@@ -174,41 +182,42 @@ namespace LightNote {
    tray.MouseClick += delegate(object s, Forms.MouseEventArgs e) { if (e.Button == Forms.MouseButtons.Left) Dispatcher.BeginInvoke(new Action(ShowMain)); };
    var menu = new Forms.ContextMenuStrip(); menu.Items.Add("显示便笺", null, delegate { ShowMain(); }); menu.Items.Add("新建便笺", null, delegate { NewNote(); }); menu.Items.Add(new Forms.ToolStripSeparator()); menu.Items.Add("退出轻笺", null, delegate { ExitApp(); }); tray.ContextMenuStrip = menu;
   }
-  Window Dialog(string heading, double width, double height) { return new Window { Title = heading, Icon = main.Icon, Owner = main, Width = width, Height = height, WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize, Background = Brush("#F5F7FA"), FontFamily = main.FontFamily, FontSize = 14, Topmost = main.Topmost }; }
-  Button MakeButton(string text, Action action, bool primary) { var b = new Button { Content = text, Margin = new Thickness(4), MinHeight = 36, Padding = new Thickness(12, 6, 12, 6), Style = (Style)main.Resources[typeof(Button)] }; if (primary) { b.Background = Brush("#285BE2"); b.Foreground = Brushes.White; b.BorderBrush = b.Background; } b.Click += delegate { action(); }; return b; }
+  Window Dialog(string heading, double width, double height) { var w = new Window { Title = heading, Icon = main.Icon, Owner = main, Width = width, Height = height, WindowStartupLocation = WindowStartupLocation.CenterOwner, ResizeMode = ResizeMode.NoResize, Background = Theme("PaperSurface"), Foreground = Theme("Ink"), FontFamily = main.FontFamily, FontSize = 13, Topmost = main.Topmost, UseLayoutRounding = true }; w.PreviewKeyDown += delegate(object s, KeyEventArgs e) { if (e.Key == Key.Escape) { w.Close(); e.Handled = true; } }; return w; }
+  Button MakeButton(string text, Action action, bool primary) { var b = new Button { Content = text, Margin = new Thickness(4, 0, 0, 0), MinHeight = 28, MinWidth = 72, Padding = new Thickness(10, 4, 10, 4), Style = primary ? (Style)main.Resources["PrimaryButton"] : (Style)main.Resources[typeof(Button)] }; b.Click += delegate { action(); }; return b; }
   void EditReminder() {
-   var note = current; var w = Dialog("日历与提醒", 360, 400); var panel = new StackPanel { Margin = new Thickness(22) }; w.Content = panel;
-   panel.Children.Add(new TextBlock { Text = "在什么时候提醒？", FontSize = 21, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 18) });
-   panel.Children.Add(new TextBlock { Text = "日期", Margin = new Thickness(0, 0, 0, 6) });
+   var note = current; var w = Dialog("设置提醒", 328, 298); var panel = new StackPanel { Margin = new Thickness(16) }; w.Content = panel;
+   panel.Children.Add(new TextBlock { Text = "提醒时间", FontSize = 16, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 12) });
+   panel.Children.Add(new TextBlock { Text = "日期", Foreground = Theme("SecondaryInk"), FontSize = 12, Margin = new Thickness(0, 0, 0, 4) });
    var initial = note.DueUtc > 0 ? new DateTime(note.DueUtc, DateTimeKind.Utc).ToLocalTime() : DateTime.Now.AddHours(1);
-   var date = new DatePicker { SelectedDate = initial.Date, Height = 34, DisplayDateStart = DateTime.Today }; System.Windows.Automation.AutomationProperties.SetName(date, "提醒日期"); panel.Children.Add(date);
-   panel.Children.Add(new TextBlock { Text = "时间（24 小时制）", Margin = new Thickness(0, 16, 0, 6) });
+   if (initial <= DateTime.Now) initial = DateTime.Now.AddHours(1);
+   var date = new DatePicker { SelectedDate = initial.Date, Height = 28, DisplayDateStart = DateTime.Today }; System.Windows.Automation.AutomationProperties.SetName(date, "提醒日期"); panel.Children.Add(date);
+   panel.Children.Add(new TextBlock { Text = "时间 · 24 小时制", Foreground = Theme("SecondaryInk"), FontSize = 12, Margin = new Thickness(0, 10, 0, 4) });
    var row = new StackPanel { Orientation = Orientation.Horizontal };
-   var hour = new ComboBox { Width = 100, Height = 34, ItemsSource = Enumerable.Range(0, 24).Select(n => n.ToString("00")).ToArray(), SelectedIndex = initial.Hour };
-   var minute = new ComboBox { Width = 100, Height = 34, ItemsSource = Enumerable.Range(0, 60).Select(n => n.ToString("00")).ToArray(), SelectedIndex = initial.Minute };
+   var hour = new ComboBox { Width = 80, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, ItemsSource = Enumerable.Range(0, 24).Select(n => n.ToString("00")).ToArray(), SelectedIndex = initial.Hour };
+   var minute = new ComboBox { Width = 80, Height = 28, VerticalContentAlignment = VerticalAlignment.Center, ItemsSource = Enumerable.Range(0, 60).Select(n => n.ToString("00")).ToArray(), SelectedIndex = initial.Minute };
    System.Windows.Automation.AutomationProperties.SetName(hour, "小时"); System.Windows.Automation.AutomationProperties.SetName(minute, "分钟");
    row.Children.Add(hour); row.Children.Add(new TextBlock { Text = " : ", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 8, 0) }); row.Children.Add(minute); panel.Children.Add(row);
-   var error = new TextBlock { Foreground = Brush("#B02020"), TextWrapping = TextWrapping.Wrap, MinHeight = 40, Margin = new Thickness(0, 10, 0, 0) }; panel.Children.Add(error);
+   var error = new TextBlock { Foreground = Theme("ErrorInk"), FontSize = 11, TextWrapping = TextWrapping.Wrap, MinHeight = 26, Margin = new Thickness(0, 6, 0, 0) }; panel.Children.Add(error);
    var buttons = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
-   buttons.Children.Add(MakeButton("取消提醒", delegate { note.Complete(); CloseAlert(note.Id); RefreshReminder(); Changed(); Save(); w.Close(); }, false));
-   buttons.Children.Add(MakeButton("保存提醒", delegate {
+   var cancel = MakeButton("取消提醒", delegate { note.Complete(); CloseAlert(note.Id); RefreshReminder(); Changed(); Save(); w.Close(); }, false); cancel.IsEnabled = note.DueUtc > 0; buttons.Children.Add(cancel);
+   var save = MakeButton("保存提醒", delegate {
     if (!date.SelectedDate.HasValue || hour.SelectedIndex < 0 || minute.SelectedIndex < 0) { error.Text = "请选择完整的日期与时间。"; return; }
     var due = date.SelectedDate.Value.Date.AddHours(hour.SelectedIndex).AddMinutes(minute.SelectedIndex);
     if (due <= DateTime.Now) { error.Text = "请选择晚于当前时间的提醒时间。"; return; }
     if (TimeZoneInfo.Local.IsInvalidTime(due)) { error.Text = "该时间处于夏令时跳变区间，请换一个时间。"; return; }
     note.DueUtc = due.ToUniversalTime().Ticks; note.Alerting = false; CloseAlert(note.Id); RefreshReminder(); Changed(); if (Save()) w.Close(); else error.Text = "保存失败，请检查磁盘空间后重试。";
-   }, true)); panel.Children.Add(buttons);
-   panel.Children.Add(new TextBlock { Text = "关机或休眠期间的提醒将在恢复运行后补报。", FontSize = 11, Foreground = Brush("#59677B"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) });
+   }, true); save.IsDefault = true; buttons.Children.Add(save); panel.Children.Add(buttons);
+   panel.Children.Add(new TextBlock { Text = "退出或休眠后，恢复运行时补报。", FontSize = 11, Foreground = Theme("Muted"), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) });
    w.ShowDialog();
   }
   void CheckReminders() { foreach (var n in data.Notes.Where(n => n.IsDue(DateTime.UtcNow.Ticks)).ToArray()) { if (!alerts.ContainsKey(n.Id)) ShowAlert(n); } }
   void CloseAlert(string id) { Window w; if (alerts.TryGetValue(id, out w)) { alerts.Remove(id); w.Close(); } }
   void ShowAlert(Note note) {
    note.Alerting = true; Save(); if (note == current) RefreshReminder();
-   var w = new Window { Title = "轻笺提醒", Icon = main.Icon, Width = 380, Height = 300, MinHeight = 260, ResizeMode = ResizeMode.CanResize, Topmost = true, ShowInTaskbar = true, WindowStartupLocation = WindowStartupLocation.CenterScreen, Background = Brushes.White, FontFamily = main.FontFamily, FontSize = 14 };
-   var grid = new Grid { Margin = new Thickness(22) }; grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); w.Content = grid;
-   var heading = new StackPanel(); heading.Children.Add(new TextBlock { Text = "到时间了", Foreground = Brush("#285BE2"), FontSize = 12 }); heading.Children.Add(new TextBlock { Text = note.Label, FontSize = 22, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, MaxHeight = 70, Margin = new Thickness(0, 8, 0, 12) }); grid.Children.Add(heading);
-   var preview = new TextBox { Text = note.Body, IsReadOnly = true, BorderThickness = new Thickness(0), TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }; Grid.SetRow(preview, 1); grid.Children.Add(preview);
+   var w = new Window { Title = "轻笺提醒", Icon = main.Icon, Width = 360, Height = 244, MinWidth = 320, MinHeight = 220, ResizeMode = ResizeMode.CanResize, Topmost = true, ShowInTaskbar = true, WindowStartupLocation = WindowStartupLocation.CenterScreen, Background = Theme("PaperSurface"), Foreground = Theme("Ink"), FontFamily = main.FontFamily, FontSize = 13, UseLayoutRounding = true };
+   var grid = new Grid { Margin = new Thickness(16) }; grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); w.Content = grid;
+   var heading = new StackPanel(); heading.Children.Add(new TextBlock { Text = "到时间了", Foreground = Theme("Accent"), FontSize = 11 }); heading.Children.Add(new TextBlock { Text = note.Label, FontSize = 18, FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.Wrap, MaxHeight = 56, Margin = new Thickness(0, 4, 0, 10) }); grid.Children.Add(heading);
+   var preview = new TextBox { Text = note.Body, IsReadOnly = true, FontSize = 13, Foreground = Theme("Ink"), BorderThickness = new Thickness(0), TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }; Grid.SetRow(preview, 1); grid.Children.Add(preview);
    var buttons = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) }; Grid.SetRow(buttons, 2); grid.Children.Add(buttons);
    buttons.Children.Add(MakeButton("10 分钟后", delegate { note.Snooze(DateTime.UtcNow); Save(); CloseAlert(note.Id); RefreshReminder(); }, false));
    buttons.Children.Add(MakeButton("知道了", delegate { note.Complete(); Save(); CloseAlert(note.Id); RefreshReminder(); }, true));

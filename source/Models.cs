@@ -25,7 +25,8 @@ namespace LightNote {
   [DataMember] public List<Note> Notes = new List<Note>();
   [DataMember] public string CurrentId;
   [DataMember] public bool Sound = true;
-  [DataMember] public double Left = -1, Top = -1, Width = 660, Height = 570;
+  [DataMember] public double Left = -1, Top = -1, Width = 580, Height = 430;
+  [DataMember] public int LayoutVersion = 2;
  }
  public class Store {
   public readonly string Folder;
