@@ -1,0 +1,18 @@
+# Local notes, recovery files, and development data
+notes.json*
+*.damaged-*
+*.bak
+*.tmp
+work/
+tests/
+test-results.txt
+
+# IDE and OS files
+.vs/
+.idea/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+__pycache__/
+*.pyc

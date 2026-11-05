@@ -1,0 +1,49 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="轻笺" Width="660" Height="570" MinWidth="560" MinHeight="420" Background="#F5F7FA" FontFamily="Microsoft YaHei UI" FontSize="14" WindowStartupLocation="CenterScreen">
+ <Window.Resources>
+  <SolidColorBrush x:Key="Ink" Color="#202B3D"/>
+  <SolidColorBrush x:Key="Muted" Color="#59677B"/>
+  <SolidColorBrush x:Key="Accent" Color="#285BE2"/>
+  <Style TargetType="Button">
+   <Setter Property="MinHeight" Value="36"/><Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="Padding" Value="12,6"/><Setter Property="Margin" Value="3,0"/><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#D8DFEA"/><Setter Property="Cursor" Value="Hand"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="B" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.8"/></Trigger><Trigger Property="IsPressed" Value="True"><Setter TargetName="B" Property="Opacity" Value="0.6"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="B" Property="Opacity" Value="0.45"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style TargetType="TextBox"><Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="CaretBrush" Value="{StaticResource Accent}"/><Setter Property="SelectionBrush" Value="#B9D1FF"/></Style>
+ </Window.Resources>
+ <Grid>
+ <Grid.ColumnDefinitions><ColumnDefinition Width="178"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+ <Border Grid.Column="0" Background="#ECF0F6" BorderBrush="#DDE3ED" BorderThickness="0,0,1,0">
+  <Grid Margin="10,20,10,14">
+   <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+   <DockPanel Margin="8,0,6,16"><TextBlock Text="我的便笺" FontSize="15" FontWeight="SemiBold" Foreground="{StaticResource Ink}"/><TextBlock x:Name="NoteTotal" DockPanel.Dock="Right" FontSize="12" Foreground="{StaticResource Muted}" HorizontalAlignment="Right"/></DockPanel>
+   <ListBox x:Name="NotesList" Grid.Row="1" AutomationProperties.Name="便笺导航列表" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
+    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="10,10"/><Setter Property="Margin" Value="0,0,0,7"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Background" Value="Transparent"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Tile" CornerRadius="7" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Tile" Property="Background" Value="#E0E7F3"/></Trigger><Trigger Property="IsSelected" Value="True"><Setter TargetName="Tile" Property="Background" Value="White"/></Trigger><Trigger Property="IsKeyboardFocusWithin" Value="True"><Setter TargetName="Tile" Property="BorderBrush" Value="#285BE2"/><Setter TargetName="Tile" Property="BorderThickness" Value="1"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+   </ListBox>
+   <TextBlock Grid.Row="2" Text="右键便笺可删除" FontSize="11" Foreground="{StaticResource Muted}" Margin="8,12,0,0"/>
+  </Grid>
+ </Border>
+ <Grid Grid.Column="1" Margin="20,16,20,14">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="16"/><RowDefinition Height="*"/><RowDefinition Height="12"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <DockPanel Grid.Row="0" LastChildFill="False">
+   <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center"><TextBlock Text="轻笺" FontWeight="Bold" FontSize="19" Foreground="{StaticResource Ink}"/><TextBlock Text="留住想法，记得要事" FontSize="11" Foreground="{StaticResource Muted}" Margin="0,3,0,0"/></StackPanel>
+   <StackPanel Orientation="Horizontal" DockPanel.Dock="Right" VerticalAlignment="Center">
+    <Button x:Name="ListButton" Content="列表" ToolTip="聚焦左侧便笺列表 / Ctrl+L" AutomationProperties.Name="便笺列表"/>
+    <Button x:Name="NewButton" Content="＋" FontSize="20" Padding="9,0" ToolTip="新建便笺 / Ctrl+N" AutomationProperties.Name="新建便笺"/>
+    <Button x:Name="MoreButton" Content="···" FontSize="19" Padding="10,0" ToolTip="设置与更多" AutomationProperties.Name="设置与更多"/>
+   </StackPanel>
+  </DockPanel>
+  <Border Grid.Row="2" Background="White" BorderBrush="#DDE3ED" BorderThickness="1" CornerRadius="10">
+   <Grid><Grid.RowDefinitions><RowDefinition Height="5"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border x:Name="ColorStrip" Background="#FFD66B" CornerRadius="10,10,0,0"/>
+    <TextBox Grid.Row="1" x:Name="TitleBox" AutomationProperties.Name="便笺标题" MaxLength="120" Text="" FontSize="22" FontWeight="SemiBold" BorderThickness="0" Background="Transparent" Margin="18,17,18,4" Padding="0,4" ToolTip="便笺标题"/>
+    <TextBox Grid.Row="2" x:Name="BodyBox" AutomationProperties.Name="便笺正文" AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" FontSize="15" Margin="18,8,14,12" Padding="0,2" SpellCheck.IsEnabled="False"/>
+    <DockPanel Grid.Row="3" Margin="16,0,16,12"><TextBlock x:Name="CountText" Foreground="{StaticResource Muted}" FontSize="11" VerticalAlignment="Center"/><Button x:Name="PinButton" DockPanel.Dock="Right" Content="置顶：关" Padding="10,4" MinHeight="30" HorizontalAlignment="Right" FontSize="12" ToolTip="浮在其他窗口上方 / Ctrl+T"/></DockPanel>
+   </Grid>
+  </Border>
+  <Button Grid.Row="4" x:Name="ReminderButton" Background="#EAF0FF" BorderBrush="#D2DFFF" HorizontalContentAlignment="Left" Margin="0" Padding="12,10" ToolTip="设置日历与提醒">
+   <StackPanel><TextBlock x:Name="ReminderText" Text="＋ 设置提醒" Foreground="#244CB2"/><TextBlock x:Name="ReminderHint" Text="选择日期与时间，到点提醒你" FontSize="11" Foreground="#52617D" Margin="0,3,0,0"/></StackPanel>
+  </Button>
+  <DockPanel Grid.Row="5" Margin="2,12,2,0"><TextBlock x:Name="SaveText" Text="本地自动保存" FontSize="11" Foreground="{StaticResource Muted}"/><TextBlock DockPanel.Dock="Right" Text="关闭窗口后仍在托盘运行" FontSize="11" Foreground="{StaticResource Muted}" HorizontalAlignment="Right"/></DockPanel>
+ </Grid>
+ </Grid>
+</Window>
